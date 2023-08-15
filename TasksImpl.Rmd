@@ -1,0 +1,68 @@
+#
+
+## Plot 30-day mortality dates for heart attack
+
+```{r}
+outcome <- read.csv("data/outcome-of-care-measures.csv")
+head(outcome)
+```
+```{r}
+names(outcome)
+```
+```{r}
+str(outcome)
+```
+```{r}
+# from the above we see the col is char
+outcome[, 11] <- as.numeric(outcome[, 11])
+hist(outcome[, 11]) 
+```
+## Finding the best hospital in a state
+
+```{r}
+library(dplyr) 
+
+best <- function(state, outcome){
+        # прочитать датафрейм
+        df_outcomes <- read.csv("data/outcome-of-care-measures.csv")
+        # маленькие буквы
+        names(df_outcomes) <- tolower(names(df_outcomes))
+        # прочитать в вектор уникальные значения штатов и болезней
+        states_uq <- c(unique(df_outcomes$State))
+        outcomes_uq <- c("heart attack", "pneumonia", "heart failure" )
+        # провести сравнения, что введенные значения не имею совпадений в векторе
+        if((state %in% states_uq) == TRUE){
+                print("state yes")
+                if((outcome %in% outcomes_uq) == TRUE){
+                        print("outcome yes")
+                        # heart attack 11, heart failure 17, pneumonia 23
+                        #идея: сужаем область поиска, берем только записи штата в отдельный датафрейм
+                        outcomes_in_state <- filter(df_outcomes, state == state)
+                        # дальше нужно автоматизировать поиск столбца по фразам                         
+                        # Hospital.30.Day.Death..Mortality..Rates.from НАЗВАНИЕ ЗАДАННОЙ БОЛЕЗНИ
+                        # и в найденном столбце проверить NA и убрать строки и привести к as.numeric()
+                        
+                        
+                } else {
+                        stop("provided outcome does not exist!")
+                }
+        } else {
+                stop("provided state does not exist!")
+        }
+        
+}
+```
+
+
+```{r}
+best("AZ", "pneumonia")
+```
+```{r}
+library(dplyr)
+outcomes_in_state <- filter(outcome, State == "CA")
+nrow(outcomes_in_state)
+```
+```{r}
+
+```
+
