@@ -17,6 +17,23 @@ str(outcome)
 outcome[, 11] <- as.numeric(outcome[, 11])
 hist(outcome[, 11]) 
 ```
+
+
+```{r}
+# install.packages("data.table")
+library("data.table")
+
+# Reading in data
+outcome <- data.table::fread('data/outcome-of-care-measures.csv')
+outcome[, (11) := lapply(.SD, as.numeric), .SDcols = (11)]
+outcome[, lapply(.SD
+                 , hist
+                 , xlab= "Deaths"
+                 , main = "Hospital 30-Day Death (Mortality) Rates from Heart Attack"
+                 , col="lightblue")
+        , .SDcols = (11)]
+```
+
 ## Finding the best hospital in a state
 
 ```{r}
@@ -28,13 +45,13 @@ best <- function(state, outcome){
         # маленькие буквы
         names(df_outcomes) <- tolower(names(df_outcomes))
         # прочитать в вектор уникальные значения штатов и болезней
-        states_uq <- c(unique(df_outcomes$State))
+        states_uq <- c(unique(df_outcomes$state))
         outcomes_uq <- c("heart attack", "pneumonia", "heart failure" )
         # провести сравнения, что введенные значения не имею совпадений в векторе
         if((state %in% states_uq) == TRUE){
-                print("state yes")
+                #print("state yes")
                 if((outcome %in% outcomes_uq) == TRUE){
-                        print("outcome yes")
+                        #print("outcome yes")
                         # heart attack 11, heart failure 17, pneumonia 23
                         #идея: сужаем область поиска, берем только записи штата в отдельный датафрейм
                         outcomes_in_state <- filter(df_outcomes, state == state)
@@ -42,6 +59,38 @@ best <- function(state, outcome){
                         # Hospital.30.Day.Death..Mortality..Rates.from НАЗВАНИЕ ЗАДАННОЙ БОЛЕЗНИ
                         # и в найденном столбце проверить NA и убрать строки и привести к as.numeric()
                         
+                        #names(outcomes_in_state)
+                        #path_root <- ""
+                        col_choice <- switch(
+                                outcome,
+                                "heart attack" = "hospital.30.day.death..mortality..rates.from.heart.attack",
+                                "pneumonia" = "hospital.30.day.death..mortality..rates.from.pneumonia",
+                                "heart failure" = "hospital.30.day.death..mortality..rates.from.heart.failure"
+                        )
+                        #class(col_choice)
+                        col_choice <- as.numeric(outcomes_in_state[, col_choice]) 
+                        df_hospitals <- outcomes_in_state$hospital.name 
+                        
+                        result_df <- data.frame(hospital_name = df_hospitals,
+                                                outcome = col_choice)
+                        
+                        if(sum(is.na(result_df) > 0)){
+                                result_df <- result_df[complete.cases(result_df), ]
+                        }
+                        
+                        result_df <- result_df[order(result_df$outcome, 
+                                                     result_df$hospital_name),]
+                        #df_hospitals['outcome'] <- col_choice
+                        #length(df_hospitals)
+                        #length(col_choice)
+                        #head(df_hospitals)
+                        
+                        #result_df <- cbind(df_hospitals, col_choice)
+                        #result_df <- result_df[complete.cases(result_df), ]
+                        #names(result_df)
+                        
+                        #return(head(result_df))
+                        #return(result_df[, "hospital_name"][1])
                         
                 } else {
                         stop("provided outcome does not exist!")
@@ -53,16 +102,175 @@ best <- function(state, outcome){
 }
 ```
 
-
 ```{r}
-best("AZ", "pneumonia")
+best("SC", "heart attack")
+
 ```
 ```{r}
-library(dplyr)
-outcomes_in_state <- filter(outcome, State == "CA")
-nrow(outcomes_in_state)
+best2 <- function(state, outcome) {
+    ## Read outcome data
+    data <- read.csv("data/outcome-of-care-measures.csv", colClasses = "character")
+    fd   <- as.data.frame(cbind(data[, 2],   # hospital
+                                data[, 7],   # state
+                                data[, 11],  # heart attack
+                                data[, 17],  # heart failure
+                                data[, 23]), # pneumonia
+                       stringsAsFactors = FALSE)
+    colnames(fd) <- c("hospital", "state", "heart attack", "heart failure", "pneumonia")
+                                        
+    ## Check that state and outcome are valid
+    if(!state %in% fd[, "state"]){
+        stop('invalid state')
+    } else if(!outcome %in% c("heart attack", "heart failure", "pneumonia")){
+        stop('invalid outcome')
+    } else {
+        si <- which(fd[, "state"] == state)
+        ts <- fd[si, ]    # extracting data for the called state
+        oi <- as.numeric(ts[, eval(outcome)])
+        min_val <- min(oi, na.rm = TRUE)
+        result  <- ts[, "hospital"][which(oi == min_val)]
+        output  <- result[order(result)]
+    }
+return(output)
+}
+
+# example output:
+best2("SC", "heart attack")  
+```
+
+
+```{r}
+rankhospital2 <- function(state, outcome, rank = "best"){
+    ## Read outcome data
+    data <- read.csv("data/outcome-of-care-measures.csv", colClasses = "character")
+    fd   <- as.data.frame(cbind(data[, 2],  # hospital
+                                data[, 7],  # state
+                               data[, 11],  # heart attack
+                               data[, 17],  # heart failure
+                               data[, 23]), # pneumonia
+                               stringsAsFactors = FALSE)
+    colnames(fd) <- c("hospital", "state", "heart attack", "heart failure", "pneumonia")
+    
+    ## Check that state and outcome are valid
+    if (!state %in% fd[, "state"]) {
+        stop('invalid state')
+    } else if (!outcome %in% c("heart attack", "heart failure", "pneumonia")){
+        stop('invalid outcome')
+    } else if (is.numeric(rank)) {
+        si <- which(fd[, "state"] == state)
+        ts <- fd[si, ]                     # extracting dataframe for the called state
+        ts[, eval(outcome)] <- as.numeric(ts[, eval(outcome)])
+        ts <- ts[order(ts[, eval(outcome)], ts[, "hospital"]), ]
+        output <- ts[, "hospital"][rank]
+    } else if (!is.numeric(rank)){
+        if (rank == "best") {
+             output <- best(state, outcome)
+        } else if (rank == "worst") {
+                si <- which(fd[, "state"] == state)
+                ts <- fd[si, ]    
+                ts[, eval(outcome)] <- as.numeric(ts[, eval(outcome)])
+                ts <- ts[order(ts[, eval(outcome)], ts[, "hospital"], decreasing = TRUE), ]
+                output <- ts[, "hospital"][1]
+        } else {
+            stop('invalid rank')
+        }
+    }
+return(output)
+}
+
+# example output:
+rankhospital2("NC", "heart attack", "worst")
+```
+
+```{r}
+rankall2 <- function(outcome, num = "best"){
+    ## Read outcome data
+    data <- read.csv("data/outcome-of-care-measures.csv", colClasses = "character")
+    fd   <- as.data.frame(cbind(data[, 2],  # hospital
+                                data[, 7],  # state
+                                data[, 11],  # heart attack
+                                data[, 17],  # heart failure
+                                data[, 23]), # pneumonia
+                          stringsAsFactors = FALSE)
+    colnames(fd) <- c("hospital", "state", "heart attack", "heart failure", "pneumonia")
+    fd[, eval(outcome)] <- as.numeric(fd[, eval(outcome)])
+    
+    ## Check that state and outcome are valid
+    
+    if (!outcome %in% c("heart attack", "heart failure", "pneumonia")){
+        stop('invalid outcome')
+    } else if (is.numeric(num)) {
+        by_state <- with(fd, split(fd, state))
+        ordered  <- list()
+        for (i in seq_along(by_state)){
+            by_state[[i]] <- by_state[[i]][order(by_state[[i]][, eval(outcome)], 
+                                                 by_state[[i]][, "hospital"]), ]
+            ordered[[i]]  <- c(by_state[[i]][num, "hospital"], by_state[[i]][, "state"][1])
+        }
+        result <- do.call(rbind, ordered)
+        output <- as.data.frame(result, row.names = result[, 2], stringsAsFactors = FALSE)
+        names(output) <- c("hospital", "state")
+    } else if (!is.numeric(num)) {
+        if (num == "best") {
+            by_state <- with(fd, split(fd, state))
+            ordered  <- list()
+            for (i in seq_along(by_state)){
+                by_state[[i]] <- by_state[[i]][order(by_state[[i]][, eval(outcome)], 
+                                                     by_state[[i]][, "hospital"]), ]
+                ordered[[i]]  <- c(by_state[[i]][1, c("hospital", "state")])
+            }
+            result <- do.call(rbind, ordered)
+            output <- as.data.frame(result, stringsAsFactors = FALSE)
+            rownames(output) <- output[, 2]
+        } else if (num == "worst") {
+            by_state <- with(fd, split(fd, state))
+            ordered  <- list()
+            for (i in seq_along(by_state)){
+                by_state[[i]] <- by_state[[i]][order(by_state[[i]][, eval(outcome)], 
+                                                     by_state[[i]][, "hospital"], 
+                                                     decreasing = TRUE), ]
+                ordered[[i]]  <- c(by_state[[i]][1, c("hospital", "state")])
+            }
+            result <- do.call(rbind, ordered)
+            output <- as.data.frame(result, stringsAsFactors = FALSE)
+            rownames(output) <- output[, 2]
+        } else {
+            stop('invalid num')
+        }
+    }
+return(output)
+}
+
+# example output:
+r <- rankall2("heart attack", 4)
+as.character(subset(r, state == "HI")$hospital)
+```
+
+```{r}
+best2("SC", "heart attack")
 ```
 ```{r}
+best2("AK", "pneumonia")
+```
 
+```{r}
+#rankhospital2("NC", "heart attack", "worst")
+#rankhospital2("WA", "heart attack", 7)
+#rankhospital2("TX", "pneumonia", 10)
+rankhospital2("NY", "heart attack", 7)
+```
+```{r}
+r <- rankall2("heart attack", 4)
+as.character(subset(r, state == "HI")$hospital)
+```
+
+```{r}
+r <- rankall2("pneumonia", "worst")
+as.character(subset(r, state == "NJ")$hospital)
+```
+
+```{r}
+r <- rankall2("heart failure", 10)
+as.character(subset(r, state == "NV")$hospital)
 ```
 
